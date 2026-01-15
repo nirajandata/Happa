@@ -1,2 +1,7 @@
 # Happa
-scientific library for machine learning
+
+### Scientific Computational Library
+ 
+- trying to make it cache-friendly as possible
+
+- TODO: add SIMD

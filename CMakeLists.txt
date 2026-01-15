@@ -1,10 +1,16 @@
 cmake_minimum_required(VERSION 4.2)
-project(Happa)
+
+project(Happa LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 26)
-target_include_directories(happa
-        INTERFACE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_executable(Happa
+        src/main.cpp
+        include/Matrix.h
 )
 
-add_executable(Happa main.cpp)
+target_include_directories(Happa
+        PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
