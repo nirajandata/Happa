@@ -4,12 +4,12 @@
 #pragma once
 
 #include <iostream>
+#include <print>
 #include "Matrix.h"
 
 inline void test_matrix() {
-
     using namespace happa;
-    Matrix<int> mat(3,3);
+    Matrix<int> mat(3, 3);
 
 
     std::cout << "Test Case 1: Matrix Initialization\n";
@@ -30,9 +30,9 @@ inline void test_matrix() {
     std::cout << "Test Case 3: Modify Elements\n";
     std::cout << "Element (1, 0): " << mat(1, 0) << "\n\n";
 
-    Matrix<double> mat2(2,2);
+    Matrix<double> mat2(2, 2);
 
-    mat2.data ={1.2,3.4,5.5,6.6};
+    mat2.data = {1.2, 3.4, 5.5, 6.6};
 
     std::cout << "Test Case 4: Non-Zero Initialization\n";
     std::cout << "Element (0, 0): " << mat2(0, 0) << "\n";
@@ -52,6 +52,17 @@ inline void test_matrix() {
     std::println("{}", m);
     std::println("Transposed:\n{}", m.transpose());
 
+    happa::Matrix ma = {{5, 9}, {4, 2}};
+    std::ranges::sort(ma);
 
+    std::cout << "After sort:\n";
+    std::println("{}", ma);
+
+    std::cout << "\nFlat data: [";
+    for (size_t i = 0; i < ma.data.size(); ++i) {
+        if (i > 0) std::cout << ", ";
+        std::cout << ma.data[i];
+    }
+    std::cout << "]\n";
 }
 
