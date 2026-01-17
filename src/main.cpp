@@ -2,5 +2,5 @@
 #include "test.h"
 
 int main() {
-    test_matrix();
+    happa::test::run_all_tests();
 }
