@@ -35,7 +35,7 @@ namespace happa {
             data.resize(rows * cols, T{0});
         }
 
-        constexpr Matrix(std::initializer_list<std::initializer_list<T>> list) {
+        constexpr Matrix(std::initializer_list<std::initializer_list<T> > list) {
             rows = list.size();
             cols = list.begin()->size();
             data.reserve(rows * cols);
@@ -78,6 +78,35 @@ namespace happa {
         [[nodiscard]] friend constexpr Matrix operator*(Matrix mat, const T &scalar) { return mat *= scalar; }
         [[nodiscard]] friend constexpr Matrix operator*(const T &scalar, Matrix mat) { return mat *= scalar; }
 
+        [[nodiscard]] constexpr Matrix operator^(size_t exp) const {
+            if (rows != cols) throw std::invalid_argument("Matrix must be square for exponentiation");
+            Matrix res = Matrix::identity(rows);
+            Matrix base = *this;
+            while (exp > 0) {
+                if (exp % 2 == 1) res = res * base;
+                base = base * base;
+                exp /= 2;
+            }
+            return res;
+        }
+
+        [[nodiscard]] constexpr Matrix &operator+=(const Matrix &other) noexcept {
+            std::ranges::transform(data, other.data, data.begin(), std::plus<T>());
+            return *this;
+        }
+
+        [[nodiscard]] constexpr Matrix &operator-=(const Matrix &other) noexcept {
+            std::ranges::transform(data, other.data, data.begin(), std::minus<T>());
+            return *this;
+        }
+
+        [[nodiscard]] constexpr T trace() const {
+            auto diagonal = data | std::views::stride(cols + 1);
+            return std::ranges::fold_left(diagonal, T{0}, std::plus<T>());
+        }
+
+        //do not use this
+        // it's only for verification and speed benchmarking against other mat-mul algos
         [[nodiscard]] constexpr Matrix multiply_standard(const Matrix &other) const {
             if (cols != other.rows) throw std::invalid_argument("Dimension mismatch");
             Matrix result(rows, other.cols);
@@ -93,38 +122,65 @@ namespace happa {
             return result;
         }
 
+        [[nodiscard]] constexpr Matrix tiled_multiply(const Matrix &other) const {
+            if (cols != other.rows) throw std::invalid_argument("Dimension mismatch");
+
+            Matrix<T> result(rows, other.cols);
+            const size_t n = rows;
+            const size_t m = cols;
+            const size_t p = other.cols;
+
+            constexpr size_t L1_BLOCK = 32;
+            constexpr size_t L2_BLOCK = 128;
+
+            for (size_t ii = 0; ii < n; ii += L2_BLOCK) {
+                for (size_t kk = 0; kk < m; kk += L2_BLOCK) {
+                    for (size_t jj = 0; jj < p; jj += L2_BLOCK) {
+                        size_t i_max = std::min(ii + L2_BLOCK, n);
+                        size_t k_max = std::min(kk + L2_BLOCK, m);
+                        size_t j_max = std::min(jj + L2_BLOCK, p);
+
+                        for (size_t i1 = ii; i1 < i_max; i1 += L1_BLOCK) {
+                            for (size_t k1 = kk; k1 < k_max; k1 += L1_BLOCK) {
+                                for (size_t j1 = jj; j1 < j_max; j1 += L1_BLOCK) {
+                                    size_t i1_max = std::min(i1 + L1_BLOCK, i_max);
+                                    size_t k1_max = std::min(k1 + L1_BLOCK, k_max);
+                                    size_t j1_max = std::min(j1 + L1_BLOCK, j_max);
+
+                                    for (size_t i = i1; i < i1_max; ++i) {
+                                        for (size_t k = k1; k < k1_max; ++k) {
+                                            T a_ik = (*this)(i, k);
+                                            if (a_ik == T{0}) continue;
+
+                                            for (size_t j = j1; j < j1_max; ++j) {
+                                                result(i, j) += a_ik * other(k, j);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return result;
+        }
+
         [[nodiscard]] constexpr Matrix operator*(const Matrix &other) const {
-            if (rows > 128 && cols > 128 && rows == cols && other.rows == other.cols) {
-                return strassen(other);
+            if (cols != other.rows) throw std::invalid_argument("Dimension mismatch");
+
+            size_t max_dim = std::max({rows, cols, other.cols});
+
+            if (max_dim >= 512 && rows == cols && cols == other.cols) {
+                size_t padded_size = std::bit_ceil(max_dim);
+                double waste_ratio = static_cast<double>((padded_size * padded_size) / (max_dim * max_dim));
+
+                if (waste_ratio < 1.25) [[unlikely]] {
+                    return strassen(other);
+                }
             }
-            return multiply_standard(other);
-        }
 
-        [[nodiscard]] constexpr Matrix operator^(size_t exp) const {
-            if (rows != cols) throw std::invalid_argument("Matrix must be square for exponentiation");
-            Matrix res = Matrix::identity(rows);
-            Matrix base = *this;
-            while (exp > 0) {
-                if (exp % 2 == 1) res = res * base;
-                base = base * base;
-                exp /= 2;
-            }
-            return res;
-        }
-
-        [[nodiscard]] constexpr Matrix &operator+=(const Matrix &other) noexcept{
-            std::ranges::transform(data, other.data, data.begin(), std::plus<T>());
-            return *this;
-        }
-
-        [[nodiscard]] constexpr Matrix &operator-=(const Matrix &other) noexcept{
-            std::ranges::transform(data, other.data, data.begin(), std::minus<T>());
-            return *this;
-        }
-
-        [[nodiscard]] constexpr T trace() const {
-            auto diagonal = data | std::views::stride(cols + 1);
-            return std::ranges::fold_left(diagonal, T{0}, std::plus<T>());
+            return tiled_multiply(other);
         }
 
     private:
@@ -140,18 +196,14 @@ namespace happa {
         static Matrix strassen_rec(SubView A, SubView B) {
             const size_t n = A.size;
 
-            if (n <= 64) {
-                Matrix res(n, n);
-                for (size_t i = 0; i < n; ++i) {
-                    for (size_t k = 0; k < n; ++k) {
-                        T temp = A(i, k);
-                        if (temp == T{0}) continue;
-                        for (size_t j = 0; j < n; ++j) {
-                            res(i, j) += temp * B(k, j);
-                        }
+            if (n <= 128) {
+                Matrix tempA(n, n), tempB(n, n);
+                for (size_t i = 0; i < n; ++i)
+                    for (size_t j = 0; j < n; ++j) {
+                        tempA(i, j) = A(i, j);
+                        tempB(i, j) = B(i, j);
                     }
-                }
-                return res;
+                return tempA.tiled_multiply(tempB);
             }
 
             const size_t mid = n / 2;
@@ -179,7 +231,8 @@ namespace happa {
                 return res;
             };
 
-            Matrix t1 = add_v(a11, a22); Matrix t2 = add_v(b11, b22);
+            Matrix t1 = add_v(a11, a22);
+            Matrix t2 = add_v(b11, b22);
             auto m1 = strassen_rec(SubView{t1, 0, 0, mid}, SubView{t2, 0, 0, mid});
 
             Matrix t3 = add_v(a21, a22);
@@ -194,10 +247,12 @@ namespace happa {
             Matrix t6 = add_v(a11, a12);
             auto m5 = strassen_rec(SubView{t6, 0, 0, mid}, b22);
 
-            Matrix t7 = sub_v(a21, a11); Matrix t8 = add_v(b11, b12);
+            Matrix t7 = sub_v(a21, a11);
+            Matrix t8 = add_v(b11, b12);
             auto m6 = strassen_rec(SubView{t7, 0, 0, mid}, SubView{t8, 0, 0, mid});
 
-            Matrix t9 = sub_v(a12, a22); Matrix t10 = add_v(b21, b22);
+            Matrix t9 = sub_v(a12, a22);
+            Matrix t10 = add_v(b21, b22);
             auto m7 = strassen_rec(SubView{t9, 0, 0, mid}, SubView{t10, 0, 0, mid});
 
             Matrix C(n, n);
@@ -250,25 +305,25 @@ namespace happa {
         }
 
         constexpr void sort_cols() {
-            for (size_t j : std::views::iota(0u, cols)) {
+            for (size_t j: std::views::iota(0u, cols)) {
                 auto col_view = std::views::iota(0u, rows)
-                              | std::views::transform([&](size_t i) { return (*this)(i, j); });
+                                | std::views::transform([&](size_t i) { return (*this)(i, j); });
 
-                auto col_data = std::ranges::to<std::vector<T>>(col_view);
+                auto col_data = std::ranges::to<std::vector<T> >(col_view);
                 std::ranges::sort(col_data);
 
-                for (size_t i : std::views::iota(0u, rows)) (*this)(i, j) = col_data[i];
+                for (size_t i: std::views::iota(0u, rows)) (*this)(i, j) = col_data[i];
             }
         }
     };
 
     template<typename T>
-    Matrix(std::initializer_list<std::initializer_list<T>>) -> Matrix<T>;
+    Matrix(std::initializer_list<std::initializer_list<T> >) -> Matrix<T>;
 }
 
 template<happa::MatrixElement T>
-struct std::formatter<happa::Matrix<T>> {
-    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+struct std::formatter<happa::Matrix<T> > {
+    constexpr auto static parse(std::format_parse_context &ctx) { return ctx.begin(); }
 
     auto format(const happa::Matrix<T> &mat, std::format_context &ctx) const {
         auto out = std::format_to(ctx.out(), "Matrix({}x{}):\n", mat.rows, mat.cols);
