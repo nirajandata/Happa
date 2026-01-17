@@ -112,12 +112,12 @@ namespace happa {
             return res;
         }
 
-        constexpr Matrix &operator+=(const Matrix &other) {
+        [[nodiscard]] constexpr Matrix &operator+=(const Matrix &other) noexcept{
             std::ranges::transform(data, other.data, data.begin(), std::plus<T>());
             return *this;
         }
 
-        constexpr Matrix &operator-=(const Matrix &other) {
+        [[nodiscard]] constexpr Matrix &operator-=(const Matrix &other) noexcept{
             std::ranges::transform(data, other.data, data.begin(), std::minus<T>());
             return *this;
         }
