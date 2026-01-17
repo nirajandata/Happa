@@ -47,15 +47,15 @@ namespace happa::test {
         for (auto& x : A.data) x = dist(gen);
         for (auto& x : B.data) x = dist(gen);
 
-        auto start_str = std::chrono::high_resolution_clock::now();
+        auto start_str = std::chrono::steady_clock::now();
         auto res_str = A.strassen(B);
-        auto end_str = std::chrono::high_resolution_clock::now();
+        auto end_str = std::chrono::steady_clock::now();
         std::chrono::duration<double> diff_str = end_str - start_str;
         std::println("Strassen (O(N^2.81)) Time: {:.4f}s", diff_str.count());
 
-        auto start_std = std::chrono::high_resolution_clock::now();
+        auto start_std = std::chrono::steady_clock::now();
         auto res_std = A.multiply_standard(B);
-        auto end_std = std::chrono::high_resolution_clock::now();
+        auto end_std = std::chrono::steady_clock::now();
         std::chrono::duration<double> diff_std = end_std - start_std;
         std::println("Standard (O(N^3)) Time:  {:.4f}s", diff_std.count());
 
