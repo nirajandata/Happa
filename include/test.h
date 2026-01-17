@@ -30,6 +30,43 @@ namespace happa::test {
 
     static_assert(run_constexpr_tests());
 
+    inline void test_division() {
+        std::println("\n--- Testing Matrix Division (LU Solve/Inverse) ---");
+
+        auto is_near = [](double a, double b, double epsilon = 1e-9) {
+            return std::abs(a - b) < epsilon;
+        };
+
+        Matrix<double> A = {{2.0, 1.0}, {1.0, 3.0}};
+        Matrix<double> B = {{5.0}, {10.0}};
+
+        auto X = A.solve(B);
+        assert(is_near(X(0, 0), 1.0));
+        assert(is_near(X(1, 0), 3.0));
+        std::println("[PASS] solve(AX=B) correct.");
+
+        Matrix<double> M1 = {{1, 2}, {3, 4}};
+        Matrix<double> M2 = {{5, 6}, {7, 8}};
+        Matrix<double> C = M1 * M2;
+        Matrix<double> Result = C / M2;
+
+        for (size_t i = 0; i < M1.data.size(); ++i) {
+            assert(is_near(Result.data[i], M1.data[i]));
+        }
+        std::println("[PASS] operator/ (Matrix Right-Division) correct.");
+
+        auto invA = A.inverse();
+        auto I_check = A * invA;
+        auto I = Matrix<double>::identity(2);
+        for (size_t i = 0; i < 4; ++i) assert(is_near(I_check.data[i], I.data[i]));
+        std::println("[PASS] inverse() correct.");
+
+        Matrix<double> D = {{3, 8}, {4, 6}};
+        assert(is_near(D.determinant(), -14.0));
+        std::println("[PASS] determinant() correct.");
+
+
+    }
 
     inline void run_comprehensive_benchmark() {
         std::println("\n{:-^95}", " HAPPA MATRIX BENCHMARK ");
@@ -85,7 +122,8 @@ namespace happa::test {
         assert((f ^ 10)(0, 1) == 55);
         std::println("[PASS] Binary Exponentiation logic correct.");
 
-        run_comprehensive_benchmark();
+        test_division();
+        // run_comprehensive_benchmark();
 
         std::println("All tests and benchmarks completed.");
     }

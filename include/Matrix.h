@@ -17,11 +17,14 @@ namespace happa {
                 { a + b } -> std::convertible_to<T>;
                 { a - b } -> std::convertible_to<T>;
                 { a * b } -> std::convertible_to<T>;
+                { a / b } -> std::convertible_to<T>;
                 { a += b } -> std::same_as<T &>;
                 { a -= b } -> std::same_as<T &>;
                 { a *= b } -> std::same_as<T &>;
+                { a *= b } -> std::same_as<T &>;
                 { T{0} };
                 { T{1} };
+                { std::abs(a) };
             };
 
     template<MatrixElement T>
@@ -67,16 +70,16 @@ namespace happa {
             return result;
         }
 
-        [[nodiscard]] friend constexpr Matrix operator+(Matrix lhs, const Matrix &rhs) { return lhs += rhs; }
-        [[nodiscard]] friend constexpr Matrix operator-(Matrix lhs, const Matrix &rhs) { return lhs -= rhs; }
-
         constexpr Matrix &operator*=(const T &scalar) {
             for (auto &x: data) x *= scalar;
             return *this;
         }
 
-        [[nodiscard]] friend constexpr Matrix operator*(Matrix mat, const T &scalar) { return mat *= scalar; }
-        [[nodiscard]] friend constexpr Matrix operator*(const T &scalar, Matrix mat) { return mat *= scalar; }
+        constexpr Matrix &operator/=(const T &scalar) {
+            for (auto &x: data) x /= scalar;
+            return *this;
+        }
+
 
         [[nodiscard]] constexpr Matrix operator^(size_t exp) const {
             if (rows != cols) throw std::invalid_argument("Matrix must be square for exponentiation");
@@ -100,10 +103,25 @@ namespace happa {
             return *this;
         }
 
+        [[nodiscard]] constexpr Matrix &operator*=(const Matrix &other) noexcept {
+            std::ranges::transform(data, other.data, data.begin(), std::multiplies<T>());
+            return *this;
+        }
+
+        [[nodiscard]] constexpr Matrix &operator/=(const Matrix &other) noexcept {
+            std::ranges::transform(data, other.data, data.begin(), std::divides<T>());
+            return *this;
+        }
+
         [[nodiscard]] constexpr T trace() const {
             auto diagonal = data | std::views::stride(cols + 1);
             return std::ranges::fold_left(diagonal, T{0}, std::plus<T>());
         }
+
+        [[nodiscard]] constexpr Matrix inverse() const {
+            return this->solve(Matrix::identity(rows));
+        }
+
 
         //do not use this
         // it's only for verification and speed benchmarking against other mat-mul algos
@@ -288,6 +306,100 @@ namespace happa {
             return result;
         }
 
+        [[nodiscard]] constexpr Matrix solve(const Matrix &B) const {
+            if (rows != cols) throw std::invalid_argument("Matrix must be square to solve");
+            if (rows != B.rows) throw std::invalid_argument("Dimension mismatch with B");
+
+            size_t n = rows;
+            Matrix LU = *this;
+            std::vector<size_t> P(n);
+            std::iota(P.begin(), P.end(), 0);
+
+            for (size_t k = 0; k < n; ++k) {
+                size_t pivot = k;
+                T max_val = std::abs(LU(k, k));
+                for (size_t i = k + 1; i < n; ++i) {
+                    T val = std::abs(LU(i, k));
+                    if (val > max_val) {
+                        max_val = val;
+                        pivot = i;
+                    }
+                }
+
+                if (max_val < 1e-18) throw std::runtime_error("Matrix is singular");
+
+                if (pivot != k) {
+                    for (size_t j = 0; j < n; ++j) std::swap(LU(k, j), LU(pivot, j));
+                    std::swap(P[k], P[pivot]);
+                }
+
+                T inv_pivot = T{1} / LU(k, k);
+                for (size_t i = k + 1; i < n; ++i) {
+                    LU(i, k) *= inv_pivot;
+                    T multiplier = LU(i, k);
+
+                    for (size_t j = k + 1; j < n; ++j) {
+                        LU(i, j) -= multiplier * LU(k, j);
+                    }
+                }
+            }
+
+            Matrix X(n, B.cols);
+            for (size_t j = 0; j < B.cols; ++j) {
+                for (size_t i = 0; i < n; ++i) {
+                    X(i, j) = B(P[i], j);
+                    for (size_t k = 0; k < i; ++k) {
+                        X(i, j) -= LU(i, k) * X(k, j);
+                    }
+                }
+            }
+
+            for (size_t j = 0; j < B.cols; ++j) {
+                for (int i = (int) n - 1; i >= 0; --i) {
+                    for (size_t k = i + 1; k < n; ++k) {
+                        X(i, j) -= LU(i, k) * X(k, j);
+                    }
+                    X(i, j) /= LU(i, i);
+                }
+            }
+
+            return X;
+        }
+
+        [[nodiscard]] constexpr T determinant() const {
+            size_t n = rows;
+            Matrix LU = *this;
+            int sign = 1;
+            for (size_t k = 0; k < n; ++k) {
+                size_t pivot = k;
+                T max_v = std::abs(LU(k, k));
+                for (size_t i = k + 1; i < n; ++i) if (std::abs(LU(i, k)) > max_v) {
+                    max_v = std::abs(LU(i, k));
+                    pivot = i;
+                }
+                if (max_v < 1e-18) return T{0};
+                if (pivot != k) {
+                    for (size_t j = 0; j < n; ++j) std::swap(LU(k, j), LU(pivot, j));
+                    sign *= -1;
+                }
+                for (size_t i = k + 1; i < n; ++i) {
+                    LU(i, k) /= LU(k, k);
+                    T mult = LU(i, k);
+                    for (size_t j = k + 1; j < n; ++j) LU(i, j) -= mult * LU(k, j);
+                }
+            }
+            T det = static_cast<T>(sign);
+            for (size_t i = 0; i < n; ++i) det *= LU(i, i);
+            return det;
+        }
+
+        [[nodiscard]] constexpr Matrix operator/(const Matrix &other) const {
+            if (other.rows != other.cols) throw std::invalid_argument("Division requires square denominator");
+            auto AT = this->transpose();
+            auto BT = other.transpose();
+            return BT.solve(AT).transpose();
+        }
+
         [[nodiscard]] bool operator==(const Matrix<T> &other) const {
             return rows == other.rows && cols == other.cols && data == other.data;
         }
@@ -315,6 +427,11 @@ namespace happa {
                 for (size_t i: std::views::iota(0u, rows)) (*this)(i, j) = col_data[i];
             }
         }
+
+        [[nodiscard]] friend constexpr Matrix operator*(Matrix mat, const T &scalar) { return mat *= scalar; }
+        [[nodiscard]] friend constexpr Matrix operator/(Matrix mat, const T &scalar) { return mat /= scalar; }
+        [[nodiscard]] friend constexpr Matrix operator+(Matrix lhs, const Matrix &rhs) { return lhs += rhs; }
+        [[nodiscard]] friend constexpr Matrix operator-(Matrix lhs, const Matrix &rhs) { return lhs -= rhs; }
     };
 
     template<typename T>
