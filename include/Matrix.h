@@ -6,11 +6,13 @@
 #include <ranges>
 #include <format>
 #include <algorithm>
+#include <stdexcept>
+#include <bit>
 
 namespace happa {
     template<typename T>
     concept MatrixElement =
-            std::semiregular<T> &&      std::formattable<T, char> &&           requires(T a, T b)
+            std::semiregular<T> && std::formattable<T, char> && requires(T a, T b)
             {
                 { a + b } -> std::convertible_to<T>;
                 { a - b } -> std::convertible_to<T>;
@@ -22,7 +24,6 @@ namespace happa {
                 { T{1} };
             };
 
-
     template<MatrixElement T>
     struct Matrix {
         using value_type = T;
@@ -31,10 +32,10 @@ namespace happa {
         std::vector<T> data;
 
         constexpr Matrix(size_t row_, size_t col_) : rows(row_), cols(col_) {
-            data.resize(rows * cols, 0);
+            data.resize(rows * cols, T{0});
         }
 
-        constexpr Matrix(std::initializer_list<std::initializer_list<T> > list) {
+        constexpr Matrix(std::initializer_list<std::initializer_list<T>> list) {
             rows = list.size();
             cols = list.begin()->size();
             data.reserve(rows * cols);
@@ -93,7 +94,7 @@ namespace happa {
         }
 
         [[nodiscard]] constexpr Matrix operator*(const Matrix &other) const {
-            if (rows > 128 && cols > 128) {
+            if (rows > 128 && cols > 128 && rows == cols && other.rows == other.cols) {
                 return strassen(other);
             }
             return multiply_standard(other);
@@ -178,13 +179,26 @@ namespace happa {
                 return res;
             };
 
-            auto m1 = strassen_rec(SubView{add_v(a11, a22), 0, 0, mid}, SubView{add_v(b11, b22), 0, 0, mid});
-            auto m2 = strassen_rec(SubView{add_v(a21, a22), 0, 0, mid}, SubView{b11, 0, 0, mid});
-            auto m3 = strassen_rec(SubView{a11, 0, 0, mid}, SubView{sub_v(b12, b22), 0, 0, mid});
-            auto m4 = strassen_rec(SubView{a22, 0, 0, mid}, SubView{sub_v(b21, b11), 0, 0, mid});
-            auto m5 = strassen_rec(SubView{add_v(a11, a12), 0, 0, mid}, SubView{b22, 0, 0, mid});
-            auto m6 = strassen_rec(SubView{sub_v(a21, a11), 0, 0, mid}, SubView{add_v(b11, b12), 0, 0, mid});
-            auto m7 = strassen_rec(SubView{sub_v(a12, a22), 0, 0, mid}, SubView{add_v(b21, b22), 0, 0, mid});
+            Matrix t1 = add_v(a11, a22); Matrix t2 = add_v(b11, b22);
+            auto m1 = strassen_rec(SubView{t1, 0, 0, mid}, SubView{t2, 0, 0, mid});
+
+            Matrix t3 = add_v(a21, a22);
+            auto m2 = strassen_rec(SubView{t3, 0, 0, mid}, b11);
+
+            Matrix t4 = sub_v(b12, b22);
+            auto m3 = strassen_rec(a11, SubView{t4, 0, 0, mid});
+
+            Matrix t5 = sub_v(b21, b11);
+            auto m4 = strassen_rec(a22, SubView{t5, 0, 0, mid});
+
+            Matrix t6 = add_v(a11, a12);
+            auto m5 = strassen_rec(SubView{t6, 0, 0, mid}, b22);
+
+            Matrix t7 = sub_v(a21, a11); Matrix t8 = add_v(b11, b12);
+            auto m6 = strassen_rec(SubView{t7, 0, 0, mid}, SubView{t8, 0, 0, mid});
+
+            Matrix t9 = sub_v(a12, a22); Matrix t10 = add_v(b21, b22);
+            auto m7 = strassen_rec(SubView{t9, 0, 0, mid}, SubView{t10, 0, 0, mid});
 
             Matrix C(n, n);
             for (size_t i = 0; i < mid; ++i) {
@@ -220,7 +234,7 @@ namespace happa {
         }
 
         [[nodiscard]] bool operator==(const Matrix<T> &other) const {
-            return rows == other.rows && cols == other.cols;
+            return rows == other.rows && cols == other.cols && data == other.data;
         }
 
         template<typename Self>
@@ -228,7 +242,6 @@ namespace happa {
 
         template<typename Self>
         constexpr auto end(this Self &&self) { return self.data.end(); }
-
 
         constexpr void sort_rows() {
             for (auto row: data | std::views::chunk(cols)) {
@@ -250,11 +263,11 @@ namespace happa {
     };
 
     template<typename T>
-    Matrix(std::initializer_list<std::initializer_list<T> >) -> Matrix<T>;
+    Matrix(std::initializer_list<std::initializer_list<T>>) -> Matrix<T>;
 }
 
 template<happa::MatrixElement T>
-struct std::formatter<happa::Matrix<T> > {
+struct std::formatter<happa::Matrix<T>> {
     constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
 
     auto format(const happa::Matrix<T> &mat, std::format_context &ctx) const {
