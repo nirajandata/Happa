@@ -7,7 +7,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(Happa
         src/main.cpp
-        include/Matrix.h
 )
 
 target_include_directories(Happa

@@ -65,7 +65,6 @@ namespace happa::test {
         assert(is_near(D.determinant(), -14.0));
         std::println("[PASS] determinant() correct.");
 
-
     }
 
     inline void run_comprehensive_benchmark() {
