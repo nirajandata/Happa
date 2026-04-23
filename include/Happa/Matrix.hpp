@@ -355,7 +355,7 @@ namespace happa {
             }
 
             for (size_t j = 0; j < B.cols; ++j) {
-                for (int i = (int) n - 1; i >= 0; --i) {
+                for (ssize_t i =  n - 1; i >= 0; --i) {
                     for (size_t k = i + 1; k < n; ++k) {
                         X(i, j) -= LU(i, k) * X(k, j);
                     }
