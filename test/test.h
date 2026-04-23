@@ -8,7 +8,7 @@
 #include <random>
 #include <vector>
 #include <numeric>
-#include "Matrix.h"
+#include "../include/Matrix.hpp"
 
 namespace happa::test {
     inline void flush_cache() {
