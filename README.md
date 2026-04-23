@@ -1,7 +1,26 @@
 # Happa
 
 ### Scientific Computational Library
- 
-- trying to make it cache-friendly as possible
 
-- TODO: add SIMD
+**Happa** is a header‑only linear algebra library that puts **cache efficiency first**.  
+ 
+- All algorithms are written in **C++26** with `constexpr` support where possible.
+
+##  Quick Start
+
+```cpp
+#include <happa/Matrix.hpp>
+#include <iostream>
+
+int main() {
+    using namespace happa;
+    Matrix<double> A = {{1, 2}, {3, 4}};
+    Matrix<double> B = {{5, 6}, {7, 8}};
+
+    auto C = A * B;                     // adaptive multiply
+    auto D = A.transpose();
+    auto x = A.solve({{5}, {11}});      // solve Ax = b
+
+    std::cout << std::format("{}\n", C);
+}
+```
