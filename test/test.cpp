@@ -1,5 +1,5 @@
 #include <iostream>
-#include "test.h"
+#include "test_matrix.hpp"
 
 int main() {
     happa::test::run_all_tests();
